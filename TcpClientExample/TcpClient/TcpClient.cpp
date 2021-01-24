@@ -12,11 +12,9 @@
 	Big endian -> Network Byte Order
 	ntohs();
 	ntohl();
-
 	Litte endian -> Host Byte Order
 	htons();
 	htonl();
-
 */
 
 volatile bool isRunning = true;
@@ -53,14 +51,14 @@ public:
 		int wsResult = WSAStartup(ver, &data);
 		if (wsResult != 0) {
 			std::cerr << "Cant start winsock, ERR #" << wsResult << "\n";
-			return 1;
+			exit(1);
 		}
 
 		//create socket
 		sock = socket(AF_INET, SOCK_STREAM, 0);
 		if (sock == INVALID_SOCKET) {
 			std::cerr << "Cant create socket, ERR #" << WSAGetLastError() << "\n";
-			return 1;
+			exit(1);
 		}
 		//fill in a hint structure
 		hint.sin_family = AF_INET;
@@ -76,7 +74,7 @@ public:
 			std::cerr << "Cant connect server, ERR #" << WSAGetLastError() << "\n";
 			closesocket(this->sock);
 			WSACleanup();
-			return 1;
+			exit(1);
 		}
 		else {
 			return 0;
