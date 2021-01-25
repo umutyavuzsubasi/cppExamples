@@ -17,12 +17,11 @@
 	htonl();
 */
 
-volatile bool isRunning = true;
-
+volatile HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
 
 // do not use std::cout in signal handler
 void signal_callback_handler(int signum) {
-	isRunning = false;
+	CloseHandle(h);
 }
 
 bool validateIpAddress(const std::string& ipAddress)
@@ -34,16 +33,6 @@ bool validateIpAddress(const std::string& ipAddress)
 
 class MySocket
 {
-public:
-	WSAData data;
-	WORD ver;
-	SOCKET sock;
-	sockaddr_in hint;
-	std::string ipAddress;
-	int port;
-	std::string status;
-
-
 public:
 	int createSocket()
 	{
@@ -82,83 +71,76 @@ public:
 
 	}
 
-	void runSocket()
-	{
-		this->status = "run";
-	}
-
-	int shutdownSocket() {
-		std::cout << "Gracefully Exit " << "\n";
-		closesocket(this->sock);
+	void shutdownSocket() {
+		shutdown(this->sock, SD_BOTH);
 		WSACleanup();
-		this->status = "shutdown";
-		exit(1);
+	}
+
+	//socket getter setter
+	SOCKET getSocket() {
+		return this->sock;
+	}
+
+	void setSocket(SOCKET sock) {
+		this->sock = sock;
+	}
+
+	//ipAddress getter setter
+	std::string getIpAddress() {
+		return this->ipAddress;
+	}
+
+	void setIpAddress(std::string ipAddress) {
+		this->ipAddress = ipAddress;
 	}
 
 
-	void reconnectSocket() {
-		this->status = "reconnect";
-		std::cout << "Reconnect " << "\n";
-		std::cout << "DEBUG: reconnectSocket reconnect." << "\n";
-		closesocket(this->sock);
-		WSACleanup();
-		this->createSocket();
-		this->connectSocket();
+	// Port getter setter
+	int getPort() {
+		return this->port;
 	}
 
+	void setPort(int port) {
+		this->port = port;
+	}
+
+
+
+private:
+	WSAData data;
+	WORD ver;
+	SOCKET sock;
+	sockaddr_in hint;
+	std::string ipAddress;
+	int port;
 
 };
 
 
 void receiver(MySocket& myTcpSocket) {
 	std::cout << "DEBUG: receiver started." << "\n";
-	while (1)
+	while (h != INVALID_HANDLE_VALUE)
 	{
-		if (myTcpSocket.status == "run")
+		char recvbuf[1024] = "";
+		int bytesRecv = recv(myTcpSocket.getSocket(), recvbuf, 1024, 0);
+		//std::cout << "bytesRecv : " << bytesRecv << "\n";
+		if (bytesRecv > 0)
 		{
-			char recvbuf[1024] = "";
-			int bytesRecv = recv(myTcpSocket.sock, recvbuf, 1024, 0);
-			//std::cout << "bytesRecv : " << bytesRecv << "\n";
-			if (bytesRecv > 0)
-			{
-				std::cout << "server: " << recvbuf << "\n";
-				std::cout << "> ";
-			}
-			if (bytesRecv == 0) {
-				std::cout << "Server is down !" << "\n";
-				myTcpSocket.shutdownSocket();
-			}
-			if (bytesRecv == -1) {
-				break;
-			}
+			std::cout << "server: " << recvbuf << "\n";
+			std::cout << "> ";
 		}
-		else if (myTcpSocket.status == "reconnect")
-		{
-
-		}
-
-	}
-}
-
-void sent(MySocket& myTcpSocket) {
-	std::cout << "DEBUG: sender started." << "\n";
-	std::string userInput;
-	while (1)
-	{
-		std::cout << "> ";
-		std::getline(std::cin, userInput);
-		if (userInput == "quit") {
+		if (bytesRecv == 0) {
+			std::cout << "Server is down !" << "\n";
 			myTcpSocket.shutdownSocket();
+			break;
 		}
-		if (userInput == "reset") {
-			myTcpSocket.reconnectSocket();
-		}
-		else if (userInput.size() > 0) {
-			int sendResult = send(myTcpSocket.sock, (userInput + NEW_LINE).c_str(), userInput.size() + 1, 0);
+		if (bytesRecv == -1) {
+			myTcpSocket.shutdownSocket();
+			break;
 		}
 	}
-}
 
+}
 
 
 int main(int argc, char* argv[])
@@ -166,6 +148,8 @@ int main(int argc, char* argv[])
 	std::cout << "Started \n";
 	std::string ipAddress;
 	int port = 0;
+
+
 	//i = 1  first parameter is executable name
 	if (argc == 3) {
 
@@ -205,29 +189,37 @@ int main(int argc, char* argv[])
 
 
 	MySocket myTcpSocket;
-	myTcpSocket.ipAddress = ipAddress;
-	myTcpSocket.port = port;
+	myTcpSocket.setIpAddress(ipAddress);
+	myTcpSocket.setPort(port);
 
 	myTcpSocket.createSocket();
 	myTcpSocket.connectSocket();
-	myTcpSocket.runSocket();
 
-	auto receiverThread = std::thread(&receiver, std::ref(myTcpSocket));
-	auto senderThread = std::thread(&sent, std::ref(myTcpSocket));
+	std::thread receiverThread = std::thread(&receiver, std::ref(myTcpSocket));
+	//CloseHandle(h);
 
-	// socket command tracer
-	while (myTcpSocket.status != "shutdown") {
 
-		if (myTcpSocket.status == "reconnect") {
-			std::cout << "status is reconnect" << "\n";
-			myTcpSocket.runSocket();
+
+	while (h != INVALID_HANDLE_VALUE)
+	{
+		int sendResult;
+		std::cout << "> ";
+		std::string userInput;
+		std::getline(std::cin, userInput);
+		if (userInput == "quit") {
+			myTcpSocket.shutdownSocket();
+			break;
 		}
-		else if (myTcpSocket.status == "run")
-		{
-			// do nothing
+		else if (userInput.size() > 0) {
+			sendResult = send(myTcpSocket.getSocket(), (userInput + NEW_LINE).c_str(), userInput.size() + 1, 0);
 		}
-
+		else {
+			break;
+		}
 	}
+
+
 	// Gracefully close down everything
-	return 1;
+	std::cout << "Terminated" << "\n";
+	return 0;
 }
