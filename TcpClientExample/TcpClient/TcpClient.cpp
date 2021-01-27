@@ -8,6 +8,11 @@
 #pragma comment (lib, "Ws2_32.lib")
 #define NEW_LINE "\n"
 
+HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
+void shutdownSocket(SOCKET);
+bool validateIpAddress(const std::string);
+void receiver(SOCKET);
+
 /*
 	Big endian -> Network Byte Order
 	ntohs();
@@ -16,11 +21,6 @@
 	htons();
 	htonl();
 */
-
-volatile HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
-void shutdownSocket(SOCKET sock);
-bool validateIpAddress(const std::string ipAddress);
-void receiver(SOCKET sock);
 
 // do not use std::cout in signal handler
 void signal_callback_handler(int signum) {
@@ -32,9 +32,7 @@ int main(int argc, char* argv[])
 	std::cout << "Started \n";
 	std::string ipAddress;
 	int port = 0;
-	WSAData data;
-	WORD ver;
-	SOCKET sock;
+
 	//i = 1  first parameter is executable name
 	if (argc == 3) {
 
@@ -57,7 +55,6 @@ int main(int argc, char* argv[])
 			}
 
 		}
-
 	}
 	else
 	{
@@ -72,18 +69,20 @@ int main(int argc, char* argv[])
 
 	signal(SIGINT, signal_callback_handler);
 
-	ver = MAKEWORD(2, 2);
+	WSAData data;
+	WORD ver = MAKEWORD(2, 2);
 	int wsResult = WSAStartup(ver, &data);
 	if (wsResult != 0) {
 		std::cerr << "Cant start winsock, ERR #" << wsResult << "\n";
-		exit(0);
+		return 1;
 	}
 
 	//create socket
+	SOCKET sock;
 	sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (sock == INVALID_SOCKET) {
 		std::cerr << "Cant create socket, ERR #" << WSAGetLastError() << "\n";
-		exit(0);
+		return 1;
 	}
 	//fill in a hint structure
 	sockaddr_in hint;
@@ -94,20 +93,21 @@ int main(int argc, char* argv[])
 	int connResult = connect(sock, (sockaddr*)& hint, sizeof(hint));
 	if (connResult == SOCKET_ERROR) {
 		std::cerr << "Cant connect server, ERR #" << WSAGetLastError() << "\n";
-		closesocket(sock);
+		shutdownSocket(sock);
 		WSACleanup();
-		exit(1);
+		return 1;
 	}
 
 	std::thread receiverThread = std::thread(&receiver, sock);
 
-	while (h != INVALID_HANDLE_VALUE)
+	while (true)
 	{
 		int sendResult;
 		std::cout << "> ";
 		std::string userInput;
 		std::getline(std::cin, userInput);
 		if (userInput == "quit") {
+			receiverThread.join();
 			shutdownSocket(sock);
 			break;
 		}
@@ -115,9 +115,12 @@ int main(int argc, char* argv[])
 			sendResult = send(sock, (userInput + NEW_LINE).c_str(), userInput.size() + 1, 0);
 		}
 		else {
+			shutdownSocket(sock);
+			receiverThread.join();
 			break;
 		}
 	}
+
 
 	// Gracefully close down everything
 	std::cout << "Terminated" << "\n";
@@ -126,6 +129,7 @@ int main(int argc, char* argv[])
 }
 
 void shutdownSocket(SOCKET sock) {
+	CloseHandle(h);
 	shutdown(sock, SD_BOTH);
 	WSACleanup();
 }
@@ -140,10 +144,11 @@ bool validateIpAddress(const std::string ipAddress)
 
 void receiver(SOCKET sock) {
 	std::cout << "DEBUG: receiver started." << "\n";
-	while (h != INVALID_HANDLE_VALUE)
+	while (true)
 	{
 		char recvbuf[1024] = "";
 		int bytesRecv = recv(sock, recvbuf, 1024, 0);
+		std::cout << "[DEBUG]: Received: " << recvbuf << "\n";
 		//std::cout << "bytesRecv : " << bytesRecv << "\n";
 		if (bytesRecv > 0)
 		{
@@ -156,8 +161,10 @@ void receiver(SOCKET sock) {
 			break;
 		}
 		if (bytesRecv == -1) {
+			std::cout << "Connection closed" << "\n";
 			shutdownSocket(sock);
 			break;
 		}
 	}
+	std::cout << "thread is terminated" << "\n";
 }
