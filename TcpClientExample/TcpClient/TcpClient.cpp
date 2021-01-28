@@ -10,6 +10,7 @@
 
 
 HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
+DWORD fdwMode;
 void shutdownSocket(SOCKET);
 bool validateIpAddress(const std::string);
 void receiver(SOCKET, HANDLE);
@@ -25,17 +26,15 @@ void receiver(SOCKET, HANDLE);
 
 // do not use std::cout in signal handler
 void signal_callback_handler(int signum) {
+
 	CloseHandle(h);
 }
 
 int main(int argc, char* argv[])
 {
 	
-	std::cout << "Started \n";
 	std::string ipAddress;
 	int port = 0;
-	DWORD my_id = GetCurrentProcessId();
-	std::cout << my_id << "\n";
 	
 	//i = 1  first parameter is executable name
 	if (argc == 3) {
@@ -144,8 +143,6 @@ bool validateIpAddress(const std::string ipAddress)
 }
 
 void receiver(SOCKET sock, HANDLE h) {
-	DWORD my_id = GetCurrentProcessId();
-	std::cout << my_id << "\n";
 	while (true)
 	{
 		int iError;
@@ -170,11 +167,11 @@ void receiver(SOCKET sock, HANDLE h) {
 			// eðer iError 10004 ise WSAEINTR
 			// https://docs.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsacancelblockingcall
 			// Interrupted function call. A blocking operation was interrupted by a call to WSACancelBlockingCall.
-			std::cout << iError << "\n";
+			//std::cout << iError << "\n";
 			shutdownSocket(sock);
 			break;
 		}
-		CloseHandle(h);
 	}
+	fclose()
 	std::cout << "thread is terminated" << "\n";
 }
