@@ -8,10 +8,11 @@
 #pragma comment (lib, "Ws2_32.lib")
 #define NEW_LINE "\n"
 
+
 HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
 void shutdownSocket(SOCKET);
 bool validateIpAddress(const std::string);
-void receiver(SOCKET);
+void receiver(SOCKET, HANDLE);
 
 /*
 	Big endian -> Network Byte Order
@@ -29,10 +30,13 @@ void signal_callback_handler(int signum) {
 
 int main(int argc, char* argv[])
 {
+	
 	std::cout << "Started \n";
 	std::string ipAddress;
 	int port = 0;
-
+	DWORD my_id = GetCurrentProcessId();
+	std::cout << my_id << "\n";
+	
 	//i = 1  first parameter is executable name
 	if (argc == 3) {
 
@@ -98,7 +102,7 @@ int main(int argc, char* argv[])
 		return 1;
 	}
 
-	std::thread receiverThread = std::thread(&receiver, sock);
+	std::thread receiverThread = std::thread(&receiver, sock, h);
 
 	while (true)
 	{
@@ -107,7 +111,6 @@ int main(int argc, char* argv[])
 		std::string userInput;
 		std::getline(std::cin, userInput);
 		if (userInput == "quit") {
-			receiverThread.join();
 			shutdownSocket(sock);
 			break;
 		}
@@ -116,11 +119,10 @@ int main(int argc, char* argv[])
 		}
 		else {
 			shutdownSocket(sock);
-			receiverThread.join();
 			break;
 		}
 	}
-
+	receiverThread.join();
 
 	// Gracefully close down everything
 	std::cout << "Terminated" << "\n";
@@ -129,7 +131,6 @@ int main(int argc, char* argv[])
 }
 
 void shutdownSocket(SOCKET sock) {
-	CloseHandle(h);
 	shutdown(sock, SD_BOTH);
 	WSACleanup();
 }
@@ -142,29 +143,38 @@ bool validateIpAddress(const std::string ipAddress)
 	return result != 0;
 }
 
-void receiver(SOCKET sock) {
-	std::cout << "DEBUG: receiver started." << "\n";
+void receiver(SOCKET sock, HANDLE h) {
+	DWORD my_id = GetCurrentProcessId();
+	std::cout << my_id << "\n";
 	while (true)
 	{
+		int iError;
 		char recvbuf[1024] = "";
 		int bytesRecv = recv(sock, recvbuf, 1024, 0);
-		std::cout << "[DEBUG]: Received: " << recvbuf << "\n";
 		//std::cout << "bytesRecv : " << bytesRecv << "\n";
 		if (bytesRecv > 0)
 		{
 			std::cout << "server: " << recvbuf << "\n";
 			std::cout << "> ";
 		}
+		// bazý durumlarda  ctrl + c sinyali ile bytesRecv 0 yada -1 olabiliyor 
+		// bu durum mutex_lock ile çözülebilir mi
 		if (bytesRecv == 0) {
 			std::cout << "Server is down !" << "\n";
 			shutdownSocket(sock);
 			break;
 		}
 		if (bytesRecv == -1) {
+			iError = WSAGetLastError();
 			std::cout << "Connection closed" << "\n";
+			// eðer iError 10004 ise WSAEINTR
+			// https://docs.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsacancelblockingcall
+			// Interrupted function call. A blocking operation was interrupted by a call to WSACancelBlockingCall.
+			std::cout << iError << "\n";
 			shutdownSocket(sock);
 			break;
 		}
+		CloseHandle(h);
 	}
 	std::cout << "thread is terminated" << "\n";
 }
