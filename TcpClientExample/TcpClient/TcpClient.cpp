@@ -6,15 +6,12 @@
 #include <thread>
 
 #pragma comment (lib, "Ws2_32.lib")
-#define NEW_LINE "\n"
 
-
-HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
-DWORD fdwMode;
 void shutdownSocket(SOCKET);
 bool validateIpAddress(const std::string);
-void receiver(SOCKET, HANDLE);
+void receiver(SOCKET);
 
+int S = 0;
 /*
 	Big endian -> Network Byte Order
 	ntohs();
@@ -26,8 +23,7 @@ void receiver(SOCKET, HANDLE);
 
 // do not use std::cout in signal handler
 void signal_callback_handler(int signum) {
-
-	CloseHandle(h);
+	S = signum;
 }
 
 int main(int argc, char* argv[])
@@ -101,28 +97,33 @@ int main(int argc, char* argv[])
 		return 1;
 	}
 
-	std::thread receiverThread = std::thread(&receiver, sock, h);
-
+	std::thread receiverThread = std::thread(&receiver, sock);
+	char buff[1024];
 	while (true)
 	{
 		int sendResult;
 		std::cout << "> ";
-		std::string userInput;
-		std::getline(std::cin, userInput);
-		if (userInput == "quit") {
-			shutdownSocket(sock);
+		if (!fgets(buff, 1023, stdin)) {
 			break;
 		}
-		else if (userInput.size() > 0) {
-			sendResult = send(sock, (userInput + NEW_LINE).c_str(), userInput.size() + 1, 0);
+		//std::getline(std::cin, userInput);
+		if (!strncmp("quit", buff, 4)) {
+			break;
+		}
+		else if (strlen(buff) > 0) {
+			sendResult = send(sock, buff, strlen(buff), 0);
 		}
 		else {
-			shutdownSocket(sock);
-			break;
+			if (S != 0)
+				break;
+			//shutdownSocket(sock);
+			//break;
 		}
+		printf("buffer %s", buff);
 	}
+	
+	shutdown(sock, SD_BOTH);
 	receiverThread.join();
-
 	// Gracefully close down everything
 	std::cout << "Terminated" << "\n";
 	return 0;
@@ -142,13 +143,12 @@ bool validateIpAddress(const std::string ipAddress)
 	return result != 0;
 }
 
-void receiver(SOCKET sock, HANDLE h) {
+void receiver(SOCKET sock) {
 	while (true)
 	{
 		int iError;
 		char recvbuf[1024] = "";
 		int bytesRecv = recv(sock, recvbuf, 1024, 0);
-		//std::cout << "bytesRecv : " << bytesRecv << "\n";
 		if (bytesRecv > 0)
 		{
 			std::cout << "server: " << recvbuf << "\n";
@@ -158,20 +158,21 @@ void receiver(SOCKET sock, HANDLE h) {
 		// bu durum mutex_lock ile çözülebilir mi
 		if (bytesRecv == 0) {
 			std::cout << "Server is down !" << "\n";
-			shutdownSocket(sock);
 			break;
 		}
 		if (bytesRecv == -1) {
 			iError = WSAGetLastError();
-			std::cout << "Connection closed" << "\n";
-			// eðer iError 10004 ise WSAEINTR
-			// https://docs.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsacancelblockingcall
-			// Interrupted function call. A blocking operation was interrupted by a call to WSACancelBlockingCall.
-			//std::cout << iError << "\n";
-			shutdownSocket(sock);
+			std::cout << "Connection closed: "<<iError << "\n";
 			break;
 		}
+
 	}
-	fclose()
+
+	if (S == 0) {
+		S = -1;
+		HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
+		CloseHandle(h);
+	}
+
 	std::cout << "thread is terminated" << "\n";
 }
