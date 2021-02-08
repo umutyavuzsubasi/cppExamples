@@ -8,10 +8,9 @@
 #pragma comment (lib, "Ws2_32.lib")
 
 void shutdownSocket(SOCKET);
-bool validateIpAddress(const std::string);
 void receiver(SOCKET);
 
-int S = 0;
+static int S = 0;
 /*
 	Big endian -> Network Byte Order
 	ntohs();
@@ -29,37 +28,18 @@ void signal_callback_handler(int signum) {
 int main(int argc, char* argv[])
 {
 	
-	std::string ipAddress;
+	char* ipAddress = NULL;
 	int port = 0;
-	
 	//i = 1  first parameter is executable name
 	if (argc == 3) {
-
-		for (int i = 1; i < argc; i++)
-		{
-			if (validateIpAddress(argv[i]))
-			{
-				ipAddress = argv[i];
-				std::cout << "ip addr is valid " << ipAddress << "\n";
-			}
-			else if ((atoi(argv[i]) > 0 && atoi(argv[i]) < 65535))
-			{
-				port = atoi(argv[i]);
-				std::cout << "port is valid " << port << "\n";
-			}
-			else {
-				std::cout << "Unexpected argument" << "\n";
-				std::cout << "Terminating ";
-				exit(1);
-			}
-
-		}
+		ipAddress = argv[1];
+		port = atoi(argv[2]);
 	}
 	else
 	{
-		std::cout << "(Need arguments 2 ip and port)" << "\n";
-		std::cout << "Terminating ";
-		exit(0);
+		printf("Usage %s Ip port\n", argv[0]);
+		printf("Terminating");
+		exit(1);
 	}
 
 
@@ -68,11 +48,12 @@ int main(int argc, char* argv[])
 
 	signal(SIGINT, signal_callback_handler);
 
+
 	WSAData data;
 	WORD ver = MAKEWORD(2, 2);
 	int wsResult = WSAStartup(ver, &data);
 	if (wsResult != 0) {
-		std::cerr << "Cant start winsock, ERR #" << wsResult << "\n";
+		printf("Cant start winsock, ERROR: %d\n", wsResult);
 		return 1;
 	}
 
@@ -80,18 +61,18 @@ int main(int argc, char* argv[])
 	SOCKET sock;
 	sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (sock == INVALID_SOCKET) {
-		std::cerr << "Cant create socket, ERR #" << WSAGetLastError() << "\n";
+		printf("Cant create socket, ERROR: %d\n", WSAGetLastError());
 		return 1;
 	}
 	//fill in a hint structure
 	sockaddr_in hint;
 	hint.sin_family = AF_INET;
 	hint.sin_port = htons(port);
-	inet_pton(AF_INET, ipAddress.c_str(), &hint.sin_addr);
+	inet_pton(AF_INET, ipAddress, &hint.sin_addr);
 
 	int connResult = connect(sock, (sockaddr*)& hint, sizeof(hint));
 	if (connResult == SOCKET_ERROR) {
-		std::cerr << "Cant connect server, ERR #" << WSAGetLastError() << "\n";
+		printf("Cant connect server, ERROR: %d\n", WSAGetLastError());
 		shutdownSocket(sock);
 		WSACleanup();
 		return 1;
@@ -102,7 +83,7 @@ int main(int argc, char* argv[])
 	while (true)
 	{
 		int sendResult;
-		std::cout << "> ";
+		printf("> ");
 		if (!fgets(buff, 1023, stdin)) {
 			break;
 		}
@@ -110,22 +91,19 @@ int main(int argc, char* argv[])
 		if (!strncmp("quit", buff, 4)) {
 			break;
 		}
-		else if (strlen(buff) > 0) {
+		else if (strlen(buff) > 1) {
 			sendResult = send(sock, buff, strlen(buff), 0);
 		}
 		else {
 			if (S != 0)
 				break;
-			//shutdownSocket(sock);
-			//break;
 		}
-		printf("buffer %s", buff);
 	}
 	
 	shutdown(sock, SD_BOTH);
 	receiverThread.join();
 	// Gracefully close down everything
-	std::cout << "Terminated" << "\n";
+	printf("Terminated\n");
 	return 0;
 
 }
@@ -133,14 +111,6 @@ int main(int argc, char* argv[])
 void shutdownSocket(SOCKET sock) {
 	shutdown(sock, SD_BOTH);
 	WSACleanup();
-}
-
-
-bool validateIpAddress(const std::string ipAddress)
-{
-	struct sockaddr_in sa;
-	int result = inet_pton(AF_INET, ipAddress.c_str(), &(sa.sin_addr));
-	return result != 0;
 }
 
 void receiver(SOCKET sock) {
@@ -151,18 +121,16 @@ void receiver(SOCKET sock) {
 		int bytesRecv = recv(sock, recvbuf, 1024, 0);
 		if (bytesRecv > 0)
 		{
-			std::cout << "server: " << recvbuf << "\n";
-			std::cout << "> ";
+			printf("server: %s\n", recvbuf);
+			printf("> ");
 		}
-		// bazý durumlarda  ctrl + c sinyali ile bytesRecv 0 yada -1 olabiliyor 
-		// bu durum mutex_lock ile çözülebilir mi
 		if (bytesRecv == 0) {
-			std::cout << "Server is down !" << "\n";
+			printf("Server is down !\n");
 			break;
 		}
 		if (bytesRecv == -1) {
 			iError = WSAGetLastError();
-			std::cout << "Connection closed: "<<iError << "\n";
+			printf("Connection closed ERROR: %d\n ", iError);
 			break;
 		}
 
@@ -174,5 +142,5 @@ void receiver(SOCKET sock) {
 		CloseHandle(h);
 	}
 
-	std::cout << "thread is terminated" << "\n";
+	printf("thread is terminated\n");
 }
