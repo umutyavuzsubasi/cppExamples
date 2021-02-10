@@ -7,7 +7,7 @@
 
 #pragma comment (lib, "Ws2_32.lib")
 
-void receiver(SOCKET);
+void sender(SOCKET);
 
 volatile int signalNumber = 0;
 /*
@@ -26,7 +26,7 @@ void signal_callback_handler(int signum) {
 
 int main(int argc, char* argv[])
 {
-	
+
 	char* ipAddress = NULL;
 	int port = 0;
 
@@ -40,6 +40,7 @@ int main(int argc, char* argv[])
 		printf("Terminating");
 		return 1;
 	}
+
 
 	signal(SIGINT, signal_callback_handler);
 
@@ -73,35 +74,8 @@ int main(int argc, char* argv[])
 		return 1;
 	}
 
-	std::thread receiverThread = std::thread(&receiver, sock);
-	char buff[1024];
-	while (true)
-	{
-		int sendResult;
-		printf("> ");
-		if (!fgets(buff, 1023, stdin)) {
-			break;
-		}
-		//std::getline(std::cin, userInput);
-		if (!strcmp(buff, "quit\n")) {
-			break;
-		}
-		else if (strlen(buff) > 1) {
-			sendResult = send(sock, buff, strlen(buff), 0);
-		}
-		else {
-			if (signalNumber != 0)
-				break;
-		}
-	}
-	
-	shutdown(sock, SD_BOTH);
-	receiverThread.join();
-	printf("Terminated\n");
-	return 0;
-}
+	std::thread receiverThread = std::thread(&sender, sock);
 
-void receiver(SOCKET sock) {
 	while (true)
 	{
 		int iError;
@@ -109,7 +83,7 @@ void receiver(SOCKET sock) {
 		int bytesRecv = recv(sock, recvbuf, 1024, 0);
 		if (bytesRecv > 0)
 		{
-			printf("server: %s\n", recvbuf);
+			printf("Server: %s\n", recvbuf);
 			printf("> ");
 		}
 		else if (bytesRecv == 0) {
@@ -122,10 +96,35 @@ void receiver(SOCKET sock) {
 			break;
 		}
 	}
+	
 	if (signalNumber == 0) {
 		signalNumber = -1;
 		HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
 		CloseHandle(h);
 	}
+
+	receiverThread.join();
+	printf("Terminated\n");
+	return 0;
+}
+
+void sender(SOCKET sock) {
+	char buff[1024];
+	while (true)
+	{
+
+		int sendResult;
+		printf("> ");
+		if (!fgets(buff, 1023, stdin)) {
+			break;
+		}
+		if (!strcmp(buff, "quit\n")) {
+			break;
+		}
+		else if (strlen(buff) > 1) {
+			sendResult = send(sock, buff, strlen(buff), 0);
+		}
+	}
+	shutdown(sock, SD_BOTH);
 	printf("thread is terminated\n");
 }
